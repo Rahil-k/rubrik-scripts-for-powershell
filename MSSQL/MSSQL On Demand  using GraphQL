@@ -1,0 +1,57 @@
+#This script uses a service account from RSC to get the authentication token https://docs.rubrik.com/en-us/saas/saas/adding_a_service_account.html
+
+$ServiceAccount = Get-Content "Path of the downloaded service account JSON file" | ConvertFrom-Json
+
+#Define GraphQL endpoint 
+$uri = "https://RSC/Polaris_URL/api/graphql"
+
+# Create custom header
+$headers = @{
+    "Content-Type" = "application/json"
+}
+
+# Payload to retrieve access token
+$body = @{
+    'client_id' = $ServiceAccount.client_id
+    'client_secret' = $ServiceAccount.client_secret
+}
+
+$body = $body | ConvertTo-Json
+
+# Get access token
+$response = Invoke-RestMethod -Body $body -Headers $headers -Method Post -Uri $ServiceAccount.access_token_uri
+
+# Access Token Complete
+$bearerToken = $response.access_token
+$headers = @{
+    "Authorization" = "Bearer $bearerToken"
+    "Content-Type" = "application/json"
+}
+#Authentication complete
+
+#GraphQL Query for OnDemand backup, provide sla_id and Database_id
+$body = @{
+    query = @"
+      mutation MssqlTakeOnDemandSnapshotMutation {
+        createOnDemandMssqlBackup(input: {
+          config: {
+            baseOnDemandSnapshotConfig: {
+              slaId: "sla_id"
+            }
+          }
+          id: "Database_id"
+          userNote: ""
+        }) {
+          # Specify the fields you want to retrieve within createOnDemandMssqlBackup
+		#id generates the job_id and status retrives the 
+          id
+          status
+        }
+      }
+"@
+}
+
+#Calling GraphQL endpoint the initiate the backup
+$result = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Body ($body | ConvertTo-Json)
+
+Write-Output ($result | ConvertTo-Json -Depth 100)
